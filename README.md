@@ -1,0 +1,2 @@
+# hirunogohan-templates
+テンプレートなど
