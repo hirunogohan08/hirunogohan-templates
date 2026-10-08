@@ -2,7 +2,7 @@ from bisect import bisect_left, bisect_right
 from collections import Counter, defaultdict, deque
 from collections.abc import Iterable
 from fractions import Fraction
-from functools import cache
+from functools import cache, reduce
 from heapq import heappop, heappush
 from itertools import (
     combinations,
@@ -15,8 +15,11 @@ from itertools import (
 )
 import io
 import math
+import random
 import string
 import sys
+import time
+import operator
 
 # ===== 設定・制限解除 =====
 # fmt: off
@@ -32,11 +35,12 @@ LOW = list(string.ascii_lowercase)
 UPP = list(string.ascii_uppercase)
 NUM = list(string.digits)
 INF = float("inf")
-MOD = 998244353
+# MOD = 998244353
 # MOD = 10**9 + 7
 DIR4 = [(0, 1), (0, -1), (1, 0), (-1, 0)]
 DIR8 = [(-1, 1), (0, 1), (1, 1), (-1, 0), (1, 0), (-1, -1), (0, -1), (1, -1)]
 DIR9 = DIR8 + [(0, 0)]
-flag, ans = False, 0
+flag, ans, cnt = False, 0, 0
 
 # ===== Go Writing =====
+
