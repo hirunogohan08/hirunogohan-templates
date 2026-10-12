@@ -2,7 +2,7 @@ from bisect import bisect_left, bisect_right
 from collections import Counter, defaultdict, deque
 from collections.abc import Iterable
 from fractions import Fraction
-from functools import cache
+from functools import cache, reduce
 from heapq import heappop, heappush
 from itertools import (
     combinations,
@@ -15,54 +15,61 @@ from itertools import (
 )
 import io
 import math
+import random
 import string
 import sys
+import time
+import operator
 
 # ===== 設定・制限解除 =====
 # fmt: off
-sys.setrecursionlimit(2 * 10**6)
+sys.setrecursionlimit(2 * 10 ** 6)
 input = sys.stdin.readline
-sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8")
-def print(*args, sep=" ", end="\n"):
-    sys.stdout.write(sep.join(map(str, args)) + end)
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding = "utf-8")
+def print(*A, sep = " ", end = "\n"):
+    sys.stdout.write(sep.join(map(str, A)) + end)
 # fmt: on
 
 # ===== 定数・リスト =====
-LOW = list(string.ascii_lowercase)
-UPP = list(string.ascii_uppercase)
-NUM = list(string.digits)
+L = list(string.ascii_lowercase)
+U = list(string.ascii_uppercase)
+M = list(string.digits)
 INF = float("inf")
-MOD = 998244353
-# MOD = 10**9 + 7
-DIR4 = [(0, 1), (0, -1), (1, 0), (-1, 0)]
-DIR8 = [(-1, 1), (0, 1), (1, 1), (-1, 0), (1, 0), (-1, -1), (0, -1), (1, -1)]
-DIR9 = DIR8 + [(0, 0)]
-flag, ans = False, 0
+# MOD = 998244353
+# MOD = 10 ** 9 + 7
+D = [(0, 1), (0, -1), (1, 0), (-1, 0)]
+E = [(-1, 1), (0, 1), (1, 1), (-1, 0), (1, 0), (-1, -1), (0, -1), (1, -1)]
+F = E + [(0, 0)]
+flag, ans, cnt = False, 0, 0
 
 
 # ===== 遅延セグメント木 =====
 class LazySegTree:
     # 遅延セグ木の初期化
-    # 入力: N = 配列の長さ, A = 初期配列(list)
+    # 入力: N = 配列の長さ, A = 初期配列(list), T = A/Hを維持するか
+    # T = False なら区間更新が O(log N) になる(update/switch/queryindexは使用不可)
     # 計算量: O(N)
-    def __init__(self, N, A):
-        self.N, self.A = N, list(A)
+    def __init__(self, N, A, T=True):
+        self.N, self.A, self.T = N, list(A), T
 
         self.X = 1
         while self.X < N:
             self.X *= 2
 
         K = 2 * self.X
-        self.S = [0] * K
-        self.U = [(-INF, -1)] * K
-        self.D = [(INF, -1)] * K
-        self.E = [0] * K
-        self.F = [None] * K
-        self.H = {}
+        self.S, self.U, self.D, self.E, self.F, self.H = (
+            [0] * K,
+            [(-INF, -1)] * K,
+            [(INF, -1)] * K,
+            [0] * K,
+            [None] * K,
+            {},
+        )
 
         for i in range(N):
             self._set_leaf(i, self.A[i])
-            self.H.setdefault(self.A[i], set()).add(i)
+            if self.T:
+                self.H.setdefault(self.A[i], set()).add(i)
 
         for i in range(self.X - 1, 0, -1):
             self._pull(i)
@@ -73,12 +80,9 @@ class LazySegTree:
     def _set_leaf(self, I, X):
         I += self.X
 
-        self.S[I] = X
-        self.U[I] = (X, I - self.X)
-        self.D[I] = (X, I - self.X)
+        self.S[I], self.U[I], self.D[I] = X, (X, I - self.X), (X, I - self.X)
 
-        self.E[I] = 0
-        self.F[I] = None
+        self.E[I], self.F[I] = 0, None
 
     # 子2つから親1つを再計算する(内部用)
     # 入力: I = 親ノードの番号
@@ -86,9 +90,11 @@ class LazySegTree:
     def _pull(self, I):
         L, R = I * 2, I * 2 + 1
 
-        self.S[I] = self.S[L] + self.S[R]
-        self.U[I] = max(self.U[L], self.U[R])
-        self.D[I] = min(self.D[L], self.D[R])
+        self.S[I], self.U[I], self.D[I] = (
+            self.S[L] + self.S[R],
+            max(self.U[L], self.U[R]),
+            min(self.D[L], self.D[R]),
+        )
 
     # ノードに「代入」を適用する(内部用)
     # 入力: I = ノード番号, X = 代入する値, P, Q = このノードが担当する実区間 [P, Q)
@@ -96,22 +102,19 @@ class LazySegTree:
     def _apply_set(self, I, X, P, Q):
         K = Q - P
 
-        self.S[I] = X * K
-        self.U[I] = (X, Q - 1)
-        self.D[I] = (X, P)
+        self.S[I], self.U[I], self.D[I] = X * K, (X, Q - 1), (X, P)
 
-        self.F[I] = X
-        self.E[I] = 0
+        self.F[I], self.E[I] = X, 0
 
     # ノードに「加算」を適用する(内部用)
     # 入力: I = ノード番号, X = 加算する値, L = 区間長
     # 計算量: O(1)
     def _apply_add(self, I, X, L):
-        self.S[I] += X * L
-
-        self.U[I] = (self.U[I][0] + X, self.U[I][1])
-
-        self.D[I] = (self.D[I][0] + X, self.D[I][1])
+        self.S[I], self.U[I], self.D[I] = (
+            self.S[I] + X * L,
+            (self.U[I][0] + X, self.U[I][1]),
+            (self.D[I][0] + X, self.D[I][1]),
+        )
 
         if self.F[I] is not None:
             self.F[I] += X
@@ -125,8 +128,7 @@ class LazySegTree:
         if I >= self.X:
             return
 
-        L, R = I * 2, I * 2 + 1
-        M = (P + Q) // 2
+        L, R, M = I * 2, I * 2 + 1, (P + Q) // 2
 
         if self.F[I] is not None:
             X = self.F[I]
@@ -166,11 +168,9 @@ class LazySegTree:
             M = (L + R) // 2
 
             if I < M:
-                O = O * 2
-                R = M
+                O, R = O * 2, M
             else:
-                O = O * 2 + 1
-                L = M
+                O, L = O * 2 + 1, M
 
     # 値 -> indexの対応を付け替える(内部用)
     # 入力: I = 配列のindex, P = 古い値, Q = 新しい値
@@ -185,6 +185,7 @@ class LazySegTree:
 
     # セグ木の更新(1点)
     # A[I] を X にする
+    # ※ T = True のときのみ使用可
     # 計算量: O(log N)
     def update(self, I, X):
         P = self.A[I]
@@ -202,6 +203,7 @@ class LazySegTree:
 
     # セグ木の更新(交換)
     # A[I] と A[J] を入れ替える
+    # ※ T = True のときのみ使用可
     # 計算量: O(log N)
     def switch(self, I, J):
         P, Q = self.A[I], self.A[J]
@@ -228,19 +230,20 @@ class LazySegTree:
     # 区間更新(加算)
     # [L, R) の全要素に X を加える
     # セグ木部分: O(log N)
-    # A/Hの同期処理: O(R-L) (index逆引き用のHを維持するために必要なコスト。queryindexを使わないならA/Hの維持自体を削るとO(log N)化できる)
+    # A/Hの同期処理: O(R-L) (T = True のときのみ実行)
     def add(self, L, R, X):
         if L >= R or X == 0:
             return
 
         self._range_add(1, 0, self.X, L, R, X)
 
-        for i in range(L, R):
-            P = self.A[i]
-            Q = P + X
+        if self.T:
+            for i in range(L, R):
+                P = self.A[i]
+                Q = P + X
 
-            self._move_pos(i, P, Q)
-            self.A[i] = Q
+                self._move_pos(i, P, Q)
+                self.A[i] = Q
 
     # 区間加算(内部用)
     def _range_add(self, I, P, Q, L, R, X):
@@ -263,21 +266,22 @@ class LazySegTree:
     # 区間更新(代入)
     # [L, R) の全要素を X にする
     # セグ木部分: O(log N)
-    # A/Hの同期処理: O(R-L) (addと同様の理由)
+    # A/Hの同期処理: O(R-L) (T = True のときのみ実行)
     def set(self, L, R, X):
         if L >= R:
             return
 
         self._range_set(1, 0, self.X, L, R, X)
 
-        for i in range(L, R):
-            P = self.A[i]
+        if self.T:
+            for i in range(L, R):
+                P = self.A[i]
 
-            if P == X:
-                continue
+                if P == X:
+                    continue
 
-            self._move_pos(i, P, X)
-            self.A[i] = X
+                self._move_pos(i, P, X)
+                self.A[i] = X
 
     # 区間代入(内部用)
     def _range_set(self, I, P, Q, L, R, X):
@@ -300,6 +304,7 @@ class LazySegTree:
     # indexを入手
     # 値 X のindexを返す
     # なければ -1、複数あれば最小
+    # ※ T = True のときのみ使用可
     # 計算量: O(|H[X]|)
     def queryindex(self, X):
         T = self.H.get(X)
@@ -370,6 +375,5 @@ class LazySegTree:
         return min(
             self._querymin(I * 2, P, M, L, R), self._querymin(I * 2 + 1, M, Q, L, R)
         )
-
 
 # ===== Go Writing =====
