@@ -22,6 +22,7 @@ import time
 import operator
 
 # ===== 設定・制限解除 =====
+# https://github.com/hirunogohan08/hirunogohan-templates/blob/main/start.py
 # fmt: off
 sys.setrecursionlimit(2 * 10**6)
 input = sys.stdin.readline
@@ -43,4 +44,3 @@ DIR9 = DIR8 + [(0, 0)]
 flag, ans, cnt = False, 0, 0
 
 # ===== Go Writing =====
-
