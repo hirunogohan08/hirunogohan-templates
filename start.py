@@ -1,6 +1,7 @@
 from bisect import bisect_left, bisect_right
 from collections import Counter, defaultdict, deque
 from collections.abc import Iterable
+from copy import deepcopy as copy
 from fractions import Fraction
 from functools import cache, reduce
 from heapq import heappop, heappush
@@ -12,7 +13,9 @@ from itertools import (
     product,
     repeat,
     chain,
+    accumulate,
 )
+from sortedcontainers import SortedSet, SortedList, SortedDict
 import io
 import math
 import random
@@ -25,10 +28,14 @@ import operator
 # https://github.com/hirunogohan08/hirunogohan-templates/blob/main/start.py
 # fmt: off
 sys.setrecursionlimit(2 * 10**6)
-input = sys.stdin.readline
+input = lambda: sys.stdin.readline().rstrip()
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8")
-def print(*args, sep=" ", end="\n"):
-    sys.stdout.write(sep.join(map(str, args)) + end)
+def print(*args, sep=" ", end="\n", file=None, flush=False):
+    file = file or sys.stdout
+    sep = " " if sep is None else sep
+    end = "\n" if end is None else end
+    file.write(sep.join(map(str, args)) + end)
+    flush and file.flush()
 # fmt: on
 
 # ===== 定数・リスト =====
