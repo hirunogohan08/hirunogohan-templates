@@ -26,6 +26,7 @@ import operator
 
 # ===== 設定・制限解除 =====
 # https://github.com/hirunogohan08/hirunogohan-templates/blob/main/start.py
+# https://github.com/hirunogohan08/hirunogohan-templates/blob/main/CC(Connected%20Components).py
 # fmt: off
 sys.setrecursionlimit(2 * 10**6)
 input = lambda: sys.stdin.readline().rstrip()
