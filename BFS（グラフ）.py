@@ -60,17 +60,17 @@ dist[0] = 0
 for _ in range(M):
     U, V = map(int, input().split())
     U, V = U - 1, V - 1
-
+    
     G[U].append(V)
     G[V].append(U)
 
 while D:
     V = D.popleft()
-
+    
     for i in G[V]:
         if dist[i] != -1:
             continue
-
+    
         dist[i] = dist[V] + 1
         D.append(i)
 
