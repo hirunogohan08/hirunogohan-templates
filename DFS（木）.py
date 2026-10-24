@@ -1,6 +1,7 @@
 from bisect import bisect_left, bisect_right
 from collections import Counter, defaultdict, deque
 from collections.abc import Iterable
+from copy import deepcopy as copy
 from fractions import Fraction
 from functools import cache, reduce
 from heapq import heappop, heappush
@@ -12,7 +13,9 @@ from itertools import (
     product,
     repeat,
     chain,
+    accumulate,
 )
+from sortedcontainers import SortedSet, SortedList, SortedDict
 import io
 import math
 import random
@@ -22,12 +25,17 @@ import time
 import operator
 
 # ===== 設定・制限解除 =====
+# https://github.com/hirunogohan08/hirunogohan-templates/blob/main/start.py
 # fmt: off
 sys.setrecursionlimit(2 * 10**6)
-input = sys.stdin.readline
+input = lambda: sys.stdin.readline().rstrip()
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8")
-def print(*args, sep=" ", end="\n"):
-    sys.stdout.write(sep.join(map(str, args)) + end)
+def print(*args, sep=" ", end="\n", file=None, flush=False):
+    file = file or sys.stdout
+    sep = " " if sep is None else sep
+    end = "\n" if end is None else end
+    file.write(sep.join(map(str, args)) + end)
+    flush and file.flush()
 # fmt: on
 
 # ===== 定数・リスト =====
@@ -40,36 +48,33 @@ INF = float("inf")
 DIR4 = [(0, 1), (0, -1), (1, 0), (-1, 0)]
 DIR8 = [(-1, 1), (0, 1), (1, 1), (-1, 0), (1, 0), (-1, -1), (0, -1), (1, -1)]
 DIR9 = DIR8 + [(0, 0)]
-flag, ans, cnt = False, 0, 0
+flag, ans, cnt = False, [], 0
+
 
 # ===== Go Writing =====
-N, M = map(int, input().split())
-G = [[] for _ in range(N)]
-P, D, S = [-1] * N, [0] * N, [1] * N
-O = []
+def dfs(v, p=-1):
+    ans.append(v + 1)
 
-for _ in range(M):
+    for u in G[v]:
+        if u == p:
+            continue
+
+        dfs(u, v)
+        ans.append(v + 1)
+
+
+N = int(input())
+G = [[] for _ in range(N)]
+
+for _ in range(N - 1):
     U, V = map(int, input().split())
     U, V = U - 1, V - 1
 
     G[U].append(V)
     G[V].append(U)
 
+for g in G:
+    g.sort()
 
-def dfs(V, U):
-    P[V] = U
-    O.append(V)
-
-    for i in G[V]:
-        if i == U:
-            continue
-        if P[i] != -1:
-            continue
-
-        D[i] = D[V] + 1
-        dfs(i, V)
-        S[V] += S[i]
-
-
-dfs(0, -1)
-print(P, D, S, O)
+dfs(0)
+print(*ans)
