@@ -1,6 +1,7 @@
 from bisect import bisect_left, bisect_right
 from collections import Counter, defaultdict, deque
 from collections.abc import Iterable
+from copy import deepcopy as copy
 from fractions import Fraction
 from functools import cache, reduce
 from heapq import heappop, heappush
@@ -12,7 +13,9 @@ from itertools import (
     product,
     repeat,
     chain,
+    accumulate,
 )
+from sortedcontainers import SortedSet, SortedList, SortedDict
 import io
 import math
 import random
@@ -22,12 +25,17 @@ import time
 import operator
 
 # ===== 設定・制限解除 =====
+# https://github.com/hirunogohan08/hirunogohan-templates/blob/main/start.py
 # fmt: off
 sys.setrecursionlimit(2 * 10**6)
-input = sys.stdin.readline
+input = lambda: sys.stdin.readline().rstrip()
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8")
-def print(*args, sep=" ", end="\n"):
-    sys.stdout.write(sep.join(map(str, args)) + end)
+def print(*args, sep=" ", end="\n", file=None, flush=False):
+    file = file or sys.stdout
+    sep = " " if sep is None else sep
+    end = "\n" if end is None else end
+    file.write(sep.join(map(str, args)) + end)
+    flush and file.flush()
 # fmt: on
 
 # ===== 定数・リスト =====
@@ -43,43 +51,36 @@ DIR9 = DIR8 + [(0, 0)]
 flag, ans, cnt = False, 0, 0
 
 # ===== Go Writing =====
-N = int(input())
+N, M = map(int, input().split())
 G = [[] for _ in range(N)]
-GN = [[] for _ in range(N)]
+flag = [False] * N
+D = []
 
-for i in range(N - 1):
+for _ in range(M):
     U, V = map(int, input().split())
-    U, V = U - 1, V - 1
+    U -= 1
+    V -= 1
 
     G[U].append(V)
     G[V].append(U)
-    GN[i] = (U, V)
 
-for i in range(N - 1):
-    U, V = GN[i]
-    flag = [False] * N
-    D = []
+for j in range(N):
+    if flag[j]:
+        continue
 
-    for j in range(N):
-        if flag[j]:
-            continue
+    Q = [j]
+    flag[j] = True
+    A = []
 
-        Q = [j]
-        flag[j] = True
-        A = []
+    while Q:
+        W = Q.pop()
+        A.append(W)
 
-        while Q:
-            W = Q.pop()
-            A.append(W)
+        for o in G[W]:
+            if not flag[o]:
+                flag[o] = True
+                Q.append(o)
 
-            for o in G[W]:
-                if (W == U and o == V) or (W == V and o == U):
-                    continue
+    D.append(A)
 
-                if not flag[o]:
-                    flag[o] = True
-                    Q.append(o)
-
-        D.append(A)
-
-    print(max(D, key=len))
+print(len(D))
