@@ -1,6 +1,7 @@
 from bisect import bisect_left, bisect_right
 from collections import Counter, defaultdict, deque
 from collections.abc import Iterable
+from copy import deepcopy as copy
 from fractions import Fraction
 from functools import cache, reduce
 from heapq import heappop, heappush
@@ -12,7 +13,9 @@ from itertools import (
     product,
     repeat,
     chain,
+    accumulate,
 )
+from sortedcontainers import SortedSet, SortedList, SortedDict
 import io
 import math
 import random
@@ -22,358 +25,266 @@ import time
 import operator
 
 # ===== 設定・制限解除 =====
+# https://github.com/hirunogohan08/hirunogohan-templates/blob/main/start.py
 # fmt: off
-sys.setrecursionlimit(2 * 10 ** 6)
-input = sys.stdin.readline
-sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding = "utf-8")
-def print(*A, sep = " ", end = "\n"):
-    sys.stdout.write(sep.join(map(str, A)) + end)
+sys.setrecursionlimit(2 * 10**6)
+input = lambda: sys.stdin.readline().rstrip()
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8")
+def print(*args, sep=" ", end="\n", file=None, flush=False):
+    file = file or sys.stdout
+    sep = " " if sep is None else sep
+    end = "\n" if end is None else end
+    file.write(sep.join(map(str, args)) + end)
+    flush and file.flush()
 # fmt: on
 
 # ===== 定数・リスト =====
-L = list(string.ascii_lowercase)
-U = list(string.ascii_uppercase)
-M = list(string.digits)
+LOW = list(string.ascii_lowercase)
+UPP = list(string.ascii_uppercase)
+NUM = list(string.digits)
 INF = float("inf")
 # MOD = 998244353
-# MOD = 10 ** 9 + 7
-D = [(0, 1), (0, -1), (1, 0), (-1, 0)]
-E = [(-1, 1), (0, 1), (1, 1), (-1, 0), (1, 0), (-1, -1), (0, -1), (1, -1)]
-F = E + [(0, 0)]
+# MOD = 10**9 + 7
+DIR4 = [(0, 1), (0, -1), (1, 0), (-1, 0)]
+DIR8 = [(-1, 1), (0, 1), (1, 1), (-1, 0), (1, 0), (-1, -1), (0, -1), (1, -1)]
+DIR9 = DIR8 + [(0, 0)]
 flag, ans, cnt = False, 0, 0
 
 
 # ===== 遅延セグメント木 =====
 class LazySegTree:
-    # 遅延セグ木の初期化
-    # 入力: N = 配列の長さ, A = 初期配列(list), T = A/Hを維持するか
-    # T = False なら区間更新が O(log N) になる(update/switch/queryindexは使用不可)
-    # 計算量: O(N)
-    def __init__(self, N, A, T=True):
-        self.N, self.A, self.T = N, list(A), T
+    # 説明：遅延セグ木を作る。区間加算・区間代入と、区間和・区間最大・区間最小ができる
+    #       使う機能を F で選べる(S=区間和 / M=区間最大 / N=区間最小)。使わない機能は配列を作らず更新もしない
+    #       遅延は (P, Q) = 「値 → P * 値 + Q」の形で持つ(加算は P = 1, 代入は P = 0)
+    #       ※値は整数のみ。最大・最小は値だけを返す(位置は返さない)。区間は 0 <= L <= R <= N で指定すること
+    #       ※M, E は max/min の単位元(-無限, +無限), H は木の高さ
+    # 入力：N = 配列の長さ, A = 初期配列(整数のlist, len(A) == N であること), F = 使う機能(省略時は全部)
+    # 出力：なし
+    # 計算量：O(N)
+    def __init__(self, N, A, F="SMN"):
+        assert len(A) == N, "len(A) と N が違う"
+        assert set(F) <= set("SMN"), "F は S M N のどれか"
+        self.N, self.X, self.F, self.M, self.E = N, 1, F, -(1 << 100), 1 << 100
 
-        self.X = 1
         while self.X < N:
             self.X *= 2
 
-        K = 2 * self.X
-        self.S, self.U, self.D, self.E, self.F, self.H = (
-            [0] * K,
-            [(-INF, -1)] * K,
-            [(INF, -1)] * K,
-            [0] * K,
-            [None] * K,
-            {},
+        X, K, T = self.X, 2 * self.X, list(A)
+        self.H = X.bit_length() - 1
+        S, U, D = (
+            [0] * K if "S" in F else None,
+            [self.M] * K if "M" in F else None,
+            [self.E] * K if "N" in F else None,
         )
+        self.S, self.U, self.D = S, U, D
+        self.P, self.Q = [1] * X, [0] * X
 
-        for i in range(N):
-            self._set_leaf(i, self.A[i])
-            if self.T:
-                self.H.setdefault(self.A[i], set()).add(i)
+        if S:
+            S[X : X + N] = T
+        if U:
+            U[X : X + N] = T
+        if D:
+            D[X : X + N] = T
 
-        for i in range(self.X - 1, 0, -1):
-            self._pull(i)
+        if S:
+            for i in range(X - 1, 0, -1):
+                S[i] = S[i << 1] + S[(i << 1) | 1]
 
-    # 葉(末端)の値をセットする(内部用)
-    # 入力: I = 配列のindex, X = 入れる値
-    # 計算量: O(1)
-    def _set_leaf(self, I, X):
-        I += self.X
+        if U:
+            for i in range(X - 1, 0, -1):
+                L, R = U[i << 1], U[(i << 1) | 1]
+                U[i] = max(L, R)
 
-        self.S[I], self.U[I], self.D[I] = X, (X, I - self.X), (X, I - self.X)
+        if D:
+            for i in range(X - 1, 0, -1):
+                L, R = D[i << 1], D[(i << 1) | 1]
+                D[i] = min(L, R)
 
-        self.E[I], self.F[I] = 0, None
+        for i, j in zip("SMN", ("querysum", "querymax", "querymin")):
+            if i not in F:
+                setattr(self, j, self._off(i, j))
 
-    # 子2つから親1つを再計算する(内部用)
-    # 入力: I = 親ノードの番号
-    # 計算量: O(1)
-    def _pull(self, I):
-        L, R = I * 2, I * 2 + 1
+    # 説明：無効な機能のクエリ用に、呼ぶと理由つきでエラーになる関数を作る(内部用)
+    # 入力：C = 機能の文字(S M N), Q = クエリ名
+    # 出力：呼ぶと RuntimeError を出す関数
+    # 計算量：O(1)
+    @staticmethod
+    def _off(C, Q):
+        def E(*_):
+            raise RuntimeError(f"{Q} は無効: F に '{C}' を入れること")
 
-        self.S[I], self.U[I], self.D[I] = (
-            self.S[L] + self.S[R],
-            max(self.U[L], self.U[R]),
-            min(self.D[L], self.D[R]),
-        )
+        return E
 
-    # ノードに「代入」を適用する(内部用)
-    # 入力: I = ノード番号, X = 代入する値, P, Q = このノードが担当する実区間 [P, Q)
-    # 計算量: O(1)
-    def _apply_set(self, I, X, P, Q):
-        K = Q - P
+    # 説明：ノード K に「値 → B * 値 + C」を適用する(内部用)。葉でなければ遅延も合成する
+    # 入力：K = ノード番号, B = 掛ける数(加算は 1, 代入は 0), C = 足す数
+    # 出力：なし
+    # 計算量：O(1)
+    def _ap(self, K, B, C):
+        if self.S:
+            self.S[K] = B * self.S[K] + C * (self.X >> (K.bit_length() - 1))
+        if self.U:
+            self.U[K] = B * self.U[K] + C
+        if self.D:
+            self.D[K] = B * self.D[K] + C
 
-        self.S[I], self.U[I], self.D[I] = X * K, (X, Q - 1), (X, P)
+        if K < self.X:
+            self.P[K], self.Q[K] = B * self.P[K], B * self.Q[K] + C
 
-        self.F[I], self.E[I] = X, 0
+    # 説明：ノード K の遅延を2つの子に渡して、K の遅延を空にする(内部用)
+    # 入力：K = ノード番号(葉でないこと)
+    # 出力：なし
+    # 計算量：O(1)
+    def _push(self, K):
+        B, C = self.P[K], self.Q[K]
 
-    # ノードに「加算」を適用する(内部用)
-    # 入力: I = ノード番号, X = 加算する値, L = 区間長
-    # 計算量: O(1)
-    def _apply_add(self, I, X, L):
-        self.S[I], self.U[I], self.D[I] = (
-            self.S[I] + X * L,
-            (self.U[I][0] + X, self.U[I][1]),
-            (self.D[I][0] + X, self.D[I][1]),
-        )
-
-        if self.F[I] is not None:
-            self.F[I] += X
-        else:
-            self.E[I] += X
-
-    # 遅延を子へ伝える(内部用)
-    # 入力: I = ノード番号, P, Q = Iが担当する実区間 [P, Q)
-    # 計算量: O(1)
-    def _push(self, I, P, Q):
-        if I >= self.X:
+        if B == 1 and C == 0:
             return
 
-        L, R, M = I * 2, I * 2 + 1, (P + Q) // 2
+        self._ap(K << 1, B, C)
+        self._ap((K << 1) | 1, B, C)
+        self.P[K], self.Q[K] = 1, 0
 
-        if self.F[I] is not None:
-            X = self.F[I]
+    # 説明：2つの子からノード K を再計算する(内部用。K の遅延は空であること)
+    # 入力：K = ノード番号(葉でないこと)
+    # 出力：なし
+    # 計算量：O(1)
+    def _pull(self, K):
+        L, R = K << 1, (K << 1) | 1
 
-            self._apply_set(L, X, P, M)
-            self._apply_set(R, X, M, Q)
+        if self.S:
+            self.S[K] = self.S[L] + self.S[R]
 
-            self.F[I] = None
+        if self.U:
+            self.U[K] = max(self.U[R], self.U[L])
 
-        if self.E[I] != 0:
-            X = self.E[I]
+        if self.D:
+            self.D[K] = min(self.D[R], self.D[L])
 
-            self._apply_add(L, X, M - P)
-            self._apply_add(R, X, Q - M)
+    # 説明：区間 [L, R) の両端に関わるノードの遅延を、上から順に子へ渡す(内部用)
+    # 入力：L = 左端(含む), R = 右端(含まない)
+    # 出力：(L + X, R + X)(葉の番号に直した値)
+    # 計算量：O(log N)
+    def _prep(self, L, R):
+        L, R = L + self.X, R + self.X
 
-            self.E[I] = 0
+        for i in range(self.H, 0, -1):
+            if ((L >> i) << i) != L:
+                self._push(L >> i)
 
-    # 葉から根まで再計算する(内部用)
-    # 入力: I = 配列のindex
-    # 計算量: O(log N)
-    def _rebuild(self, I):
-        I = (I + self.X) // 2
+            if ((R >> i) << i) != R:
+                self._push((R - 1) >> i)
 
-        while I >= 1:
-            self._pull(I)
-            I //= 2
+        return L, R
 
-    # 指定した葉まで遅延を伝播する(内部用)
-    # 入力: I = 配列のindex
-    # 計算量: O(log N)
-    def _push_path(self, I):
-        O, L, R = 1, 0, self.X
-
-        while R - L > 1:
-            self._push(O, L, R)
-
-            M = (L + R) // 2
-
-            if I < M:
-                O, R = O * 2, M
-            else:
-                O, L = O * 2 + 1, M
-
-    # 値 -> indexの対応を付け替える(内部用)
-    # 入力: I = 配列のindex, P = 古い値, Q = 新しい値
-    # 計算量: O(1)
-    def _move_pos(self, I, P, Q):
-        self.H[P].discard(I)
-
-        if not self.H[P]:
-            del self.H[P]
-
-        self.H.setdefault(Q, set()).add(I)
-
-    # セグ木の更新(1点)
-    # A[I] を X にする
-    # ※ T = True のときのみ使用可
-    # 計算量: O(log N)
-    def update(self, I, X):
-        P = self.A[I]
-
-        if P == X:
+    # 説明：区間 [L, R) に「値 → B * 値 + C」を適用する(内部用)
+    # 入力：L = 左端(含む), R = 右端(含まない), B = 掛ける数(加算は 1, 代入は 0), C = 足す数
+    # 出力：なし
+    # 計算量：O(log N)
+    def _range(self, L, R, B, C):
+        if L == R:
             return
 
-        self._push_path(I)
+        L, R = self._prep(L, R)
+        J, K = L, R
 
-        self._move_pos(I, P, X)
-        self.A[I] = X
+        while L < R:
+            if L & 1:
+                self._ap(L, B, C)
+                L += 1
 
-        self._set_leaf(I, X)
-        self._rebuild(I)
+            if R & 1:
+                R -= 1
+                self._ap(R, B, C)
 
-    # セグ木の更新(交換)
-    # A[I] と A[J] を入れ替える
-    # ※ T = True のときのみ使用可
-    # 計算量: O(log N)
-    def switch(self, I, J):
-        P, Q = self.A[I], self.A[J]
+            L, R = L >> 1, R >> 1
 
-        if I == J or P == Q:
-            return
+        for i in range(1, self.H + 1):
+            if ((J >> i) << i) != J:
+                self._pull(J >> i)
 
-        self._push_path(I)
+            if ((K >> i) << i) != K:
+                self._pull((K - 1) >> i)
 
-        if J != I:
-            self._push_path(J)
-
-        self.A[I], self.A[J] = Q, P
-
-        self._move_pos(I, P, Q)
-        self._move_pos(J, Q, P)
-
-        self._set_leaf(I, Q)
-        self._set_leaf(J, P)
-
-        self._rebuild(I)
-        self._rebuild(J)
-
-    # 区間更新(加算)
-    # [L, R) の全要素に X を加える
-    # セグ木部分: O(log N)
-    # A/Hの同期処理: O(R-L) (T = True のときのみ実行)
+    # 説明：区間加算  A[L], ..., A[R - 1] に X を加える
+    # 入力：L = 左端(含む), R = 右端(含まない), X = 加える値
+    # 出力：なし
+    # 計算量：O(log N)
     def add(self, L, R, X):
-        if L >= R or X == 0:
-            return
+        self._range(L, R, 1, X)
 
-        self._range_add(1, 0, self.X, L, R, X)
+    # 説明：区間代入  A[L], ..., A[R - 1] を X にする
+    # 入力：L = 左端(含む), R = 右端(含まない), X = 入れる値
+    # 出力：なし
+    # 計算量：O(log N)
+    def update(self, L, R, X):
+        self._range(L, R, 0, X)
 
-        if self.T:
-            for i in range(L, R):
-                P = self.A[i]
-                Q = P + X
-
-                self._move_pos(i, P, Q)
-                self.A[i] = Q
-
-    # 区間加算(内部用)
-    def _range_add(self, I, P, Q, L, R, X):
-        if R <= P or Q <= L:
-            return
-
-        if L <= P and Q <= R:
-            self._apply_add(I, X, Q - P)
-            return
-
-        self._push(I, P, Q)
-
-        M = (P + Q) // 2
-
-        self._range_add(I * 2, P, M, L, R, X)
-        self._range_add(I * 2 + 1, M, Q, L, R, X)
-
-        self._pull(I)
-
-    # 区間更新(代入)
-    # [L, R) の全要素を X にする
-    # セグ木部分: O(log N)
-    # A/Hの同期処理: O(R-L) (T = True のときのみ実行)
-    def set(self, L, R, X):
-        if L >= R:
-            return
-
-        self._range_set(1, 0, self.X, L, R, X)
-
-        if self.T:
-            for i in range(L, R):
-                P = self.A[i]
-
-                if P == X:
-                    continue
-
-                self._move_pos(i, P, X)
-                self.A[i] = X
-
-    # 区間代入(内部用)
-    def _range_set(self, I, P, Q, L, R, X):
-        if R <= P or Q <= L:
-            return
-
-        if L <= P and Q <= R:
-            self._apply_set(I, X, P, Q)
-            return
-
-        self._push(I, P, Q)
-
-        M = (P + Q) // 2
-
-        self._range_set(I * 2, P, M, L, R, X)
-        self._range_set(I * 2 + 1, M, Q, L, R, X)
-
-        self._pull(I)
-
-    # indexを入手
-    # 値 X のindexを返す
-    # なければ -1、複数あれば最小
-    # ※ T = True のときのみ使用可
-    # 計算量: O(|H[X]|)
-    def queryindex(self, X):
-        T = self.H.get(X)
-
-        return min(T) if T else -1
-
-    # 合計値を入手
-    # 区間 [L, R) の和を返す
-    # 計算量: O(log N)
+    # 説明：区間 [L, R) の和を求める(F に "S")
+    # 入力：L = 左端(含む), R = 右端(含まない)
+    # 出力：和(空区間は 0)
+    # 計算量：O(log N)
     def querysum(self, L, R):
-        return self._querysum(1, 0, self.X, L, R)
+        L, R = self._prep(L, R)
+        T, ans = self.S, 0
 
-    def _querysum(self, I, P, Q, L, R):
-        if R <= P or Q <= L:
-            return 0
+        while L < R:
+            if L & 1:
+                ans += T[L]
+                L += 1
 
-        if L <= P and Q <= R:
-            return self.S[I]
+            if R & 1:
+                R -= 1
+                ans += T[R]
 
-        self._push(I, P, Q)
+            L, R = L >> 1, R >> 1
 
-        M = (P + Q) // 2
+        return ans
 
-        return self._querysum(I * 2, P, M, L, R) + self._querysum(I * 2 + 1, M, Q, L, R)
-
-    # 最大値を入手
-    # 区間 [L, R) の (最大値, index) を返す
-    # 空区間は (-INF, -1)
-    # 同値はindexが大きい方
-    # 計算量: O(log N)
+    # 説明：区間 [L, R) の最大値を求める(F に "M")
+    # 入力：L = 左端(含む), R = 右端(含まない)
+    # 出力：最大値(空区間は -INF)
+    # 計算量：O(log N)
     def querymax(self, L, R):
-        return self._querymax(1, 0, self.X, L, R)
+        L, R = self._prep(L, R)
+        T, ans = self.U, -INF
 
-    def _querymax(self, I, P, Q, L, R):
-        if R <= P or Q <= L:
-            return (-INF, -1)
+        while L < R:
+            if L & 1:
+                ans = max(ans, T[L])
 
-        if L <= P and Q <= R:
-            return self.U[I]
+                L += 1
 
-        self._push(I, P, Q)
+            if R & 1:
+                R -= 1
 
-        M = (P + Q) // 2
+                ans = max(ans, T[R])
 
-        return max(
-            self._querymax(I * 2, P, M, L, R), self._querymax(I * 2 + 1, M, Q, L, R)
-        )
+            L, R = L >> 1, R >> 1
 
-    # 最小値を入手
-    # 区間 [L, R) の (最小値, index) を返す
-    # 空区間は (INF, -1)
-    # 同値はindexが小さい方
-    # 計算量: O(log N)
+        return ans
+
+    # 説明：区間 [L, R) の最小値を求める(F に "N")
+    # 入力：L = 左端(含む), R = 右端(含まない)
+    # 出力：最小値(空区間は INF)
+    # 計算量：O(log N)
     def querymin(self, L, R):
-        return self._querymin(1, 0, self.X, L, R)
+        L, R = self._prep(L, R)
+        T, ans = self.D, INF
 
-    def _querymin(self, I, P, Q, L, R):
-        if R <= P or Q <= L:
-            return (INF, -1)
+        while L < R:
+            if L & 1:
+                ans = min(ans, T[L])
 
-        if L <= P and Q <= R:
-            return self.D[I]
+                L += 1
 
-        self._push(I, P, Q)
+            if R & 1:
+                R -= 1
 
-        M = (P + Q) // 2
+                ans = min(ans, T[R])
 
-        return min(
-            self._querymin(I * 2, P, M, L, R), self._querymin(I * 2 + 1, M, Q, L, R)
-        )
+            L, R = L >> 1, R >> 1
+
+        return ans
+
 
 # ===== Go Writing =====
