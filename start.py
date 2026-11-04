@@ -18,6 +18,7 @@ from itertools import (
 from sortedcontainers import SortedSet, SortedList, SortedDict
 import io
 import math
+import numpy as np
 import random
 import string
 import sys
