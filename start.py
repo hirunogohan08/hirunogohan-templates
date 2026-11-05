@@ -27,6 +27,7 @@ import operator
 
 # ===== 設定・制限解除 =====
 # https://github.com/hirunogohan08/hirunogohan-templates/blob/main/start.py
+# https://docs.google.com/document/d/1hXZidjUHJUFaYYOSN34VY6HnevXTv1rL7eIJ5bRqhjQ/edit?tab=t.ylp570je24ai#heading=h.7lfmyfde7zw1
 # fmt: off
 sys.setrecursionlimit(2 * 10**6)
 input = lambda: sys.stdin.readline().rstrip()
